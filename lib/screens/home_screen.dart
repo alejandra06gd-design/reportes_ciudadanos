@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'create_report_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -170,7 +171,14 @@ class HomeScreen extends StatelessWidget {
                     SizedBox(
                       height: 47,
                       child: ElevatedButton.icon(
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const CreateReportScreen(),
+                            ),
+                          );
+                        },
                         icon: const Icon(Icons.add_circle_outline),
                         label: const Text('Crear un reporte'),
                         style: ElevatedButton.styleFrom(
