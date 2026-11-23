@@ -1,10 +1,14 @@
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'detail_screen.dart';
 
 class MyReportsScreen extends StatefulWidget {
-  const MyReportsScreen({super.key});
+  final bool mostrarTodos;
+
+  const MyReportsScreen({
+    super.key,
+    this.mostrarTodos = false,
+  });
 
   @override
   State<MyReportsScreen> createState() => _MyReportsScreenState();
@@ -25,20 +29,27 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
   }
 
   void cargarReportes() {
-    final usuario = Supabase.instance.client.auth.currentUser;
+    final supabase = Supabase.instance.client;
+    final usuario = supabase.auth.currentUser;
 
-    if (usuario == null) {
+    if (!widget.mostrarTodos && usuario == null) {
       futuroReportes = Future.value([]);
       return;
     }
 
-    futuroReportes = Supabase.instance.client
+    var consulta = supabase
         .from('reportes')
         .select(
-          'id, titulo, descripcion, categoria, estado, created_at, foto_url, latitud, longitud',
-        )
-        .eq('user_id', usuario.id)
-        .order('created_at', ascending: false);
+          'id, user_id, titulo, descripcion, categoria, estado, created_at, foto_url, latitud, longitud',
+        );
+
+    if (!widget.mostrarTodos) {
+      consulta = consulta.eq('user_id', usuario!.id);
+    }
+
+    futuroReportes = consulta
+        .order('created_at', ascending: false)
+        .then((datos) => List<Map<String, dynamic>>.from(datos));
   }
 
   Future<void> actualizarReportes() async {
@@ -101,15 +112,18 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tituloPantalla =
+        widget.mostrarTodos ? 'Reportes de la comunidad' : 'Mis reportes';
+
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8F4),
       appBar: AppBar(
         backgroundColor: bosque,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text(
-          'Mis reportes',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          tituloPantalla,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
       body: RefreshIndicator(
@@ -132,7 +146,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                   Icon(Icons.error_outline, size: 45, color: Colors.redAccent),
                   SizedBox(height: 12),
                   Center(
-                    child: Text('No se pudieron cargar tus reportes.'),
+                    child: Text('No se pudieron cargar los reportes.'),
                   ),
                 ],
               );
@@ -143,30 +157,34 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
             if (reportes.isEmpty) {
               return ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(height: 120),
-                  Icon(
+                children: [
+                  const SizedBox(height: 120),
+                  const Icon(
                     Icons.assignment_outlined,
                     size: 75,
                     color: verde,
                   ),
-                  SizedBox(height: 18),
+                  const SizedBox(height: 18),
                   Center(
                     child: Text(
-                      'Todavía no tienes reportes',
-                      style: TextStyle(
+                      widget.mostrarTodos
+                          ? 'Todavía no hay reportes registrados'
+                          : 'Todavía no tienes reportes',
+                      style: const TextStyle(
                         color: bosque,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Center(
                     child: Text(
-                      'Cuando registres un problema, aparecerá aquí.',
+                      widget.mostrarTodos
+                          ? 'Cuando la comunidad registre problemas, aparecerán aquí.'
+                          : 'Cuando registres un problema, aparecerá aquí.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.blueGrey),
+                      style: const TextStyle(color: Colors.blueGrey),
                     ),
                   ),
                 ],
@@ -178,7 +196,9 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 Text(
-                  'Tus contribuciones a Puerto Suárez',
+                  widget.mostrarTodos
+                      ? 'Contribuciones de nuestra comunidad'
+                      : 'Tus contribuciones a Puerto Suárez',
                   style: TextStyle(
                     color: Colors.brown.shade400,
                     fontSize: 13,

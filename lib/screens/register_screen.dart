@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -18,6 +19,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool ocultarPassword = true;
   bool ocultarConfirmacion = true;
+  bool cargando = false;
 
   final nombreController = TextEditingController();
   final correoController = TextEditingController();
@@ -33,6 +35,70 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+Future<void> _registrar() async {
+  if (!formularioKey.currentState!.validate()) {
+    return;
+  }
+
+  setState(() {
+    cargando = true;
+  });
+
+  try {
+    final respuesta = await Supabase.instance.client.auth.signUp(
+      email: correoController.text.trim(),
+      password: passwordController.text,
+      data: {
+        'nombre_completo': nombreController.text.trim(),
+      },
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      cargando = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          respuesta.session == null
+              ? '¡Cuenta creada! Revisa tu correo para confirmar el registro.'
+              : '¡Cuenta creada correctamente! Ya puedes iniciar sesión.',
+        ),
+        backgroundColor: bosque,
+      ),
+    );
+
+    Navigator.pop(context);
+  } on AuthException catch (error) {
+    if (!mounted) return;
+
+    setState(() {
+      cargando = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error.message),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
+  } catch (error) {
+    if (!mounted) return;
+
+    setState(() {
+      cargando = false;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Ocurrió un error. Intenta nuevamente.'),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
+  }
+}
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -215,17 +281,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         width: double.infinity,
                         height: 55,
                         child: ElevatedButton(
-                          onPressed: () {
-                            if (formularioKey.currentState!.validate()) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Datos validados. Próximamente conectaremos el registro.',
-                                  ),
-                                ),
-                              );
-                            }
-                          },
+                          onPressed: cargando ? null : _registrar,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: bosque,
                             foregroundColor: Colors.white,
@@ -234,13 +290,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               borderRadius: BorderRadius.circular(15),
                             ),
                           ),
-                          child: const Text(
-                            'Crear mi cuenta',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                            ),
-                          ),
+                          child: cargando
+                              ? const SizedBox(
+                                  height: 23,
+                                  width: 23,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : const Text(
+                                  'Crear mi cuenta',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
                         ),
                       ),
 

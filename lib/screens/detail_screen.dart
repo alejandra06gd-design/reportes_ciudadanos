@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'create_report_screen.dart';
 
 class DetailScreen extends StatefulWidget {
   final Map<String, dynamic> reporte;
@@ -22,20 +23,42 @@ class _DetailScreenState extends State<DetailScreen> {
 
   static const correoAdmin = 'alejandra.06.gd@gmail.com';
 
+  final supabase = Supabase.instance.client;
+
+  late Map<String, dynamic> reporteActual;
   late String estadoActual;
   late String estadoSeleccionado;
 
   bool esAdmin = false;
   bool guardando = false;
+  bool eliminando = false;
+  bool editando = false;
+
+  bool get esPropietario {
+    final usuario = supabase.auth.currentUser;
+
+    return usuario != null &&
+        usuario.id == reporteActual['user_id']?.toString();
+  }
+
+  bool get puedeEliminar {
+    return esPropietario && estadoActual == 'pendiente';
+  }
+
+  bool get puedeEditar {
+    return esPropietario && estadoActual == 'pendiente';
+  }
 
   @override
   void initState() {
     super.initState();
 
-    estadoActual = widget.reporte['estado']?.toString() ?? 'pendiente';
+    reporteActual = Map<String, dynamic>.from(widget.reporte);
+
+    estadoActual = reporteActual['estado']?.toString() ?? 'pendiente';
     estadoSeleccionado = estadoActual;
 
-    final usuario = Supabase.instance.client.auth.currentUser;
+    final usuario = supabase.auth.currentUser;
 
     esAdmin = usuario?.email?.toLowerCase() ==
         correoAdmin.toLowerCase();
@@ -47,16 +70,16 @@ class _DetailScreenState extends State<DetailScreen> {
     setState(() => guardando = true);
 
     try {
-      await Supabase.instance.client
+      await supabase
           .from('reportes')
           .update({'estado': estadoSeleccionado})
-          .eq('id', widget.reporte['id']);
+          .eq('id', reporteActual['id']);
 
       if (!mounted) return;
 
       setState(() {
         estadoActual = estadoSeleccionado;
-        widget.reporte['estado'] = estadoSeleccionado;
+        reporteActual['estado'] = estadoSeleccionado;
         guardando = false;
       });
 
@@ -80,13 +103,180 @@ class _DetailScreenState extends State<DetailScreen> {
     }
   }
 
+  Future<void> editarReporte() async {
+    if (!puedeEditar || editando || guardando || eliminando) return;
+
+    final resultado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateReportScreen(
+          reporte: reporteActual,
+        ),
+      ),
+    );
+
+    if (resultado != true || !mounted) return;
+
+    setState(() => editando = true);
+
+    try {
+      final actualizado = await supabase
+          .from('reportes')
+          .select()
+          .eq('id', reporteActual['id'])
+          .maybeSingle();
+
+      if (!mounted) return;
+
+      if (actualizado == null) {
+        setState(() => editando = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No se pudo cargar el reporte actualizado.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        reporteActual = Map<String, dynamic>.from(actualizado);
+        estadoActual =
+            reporteActual['estado']?.toString() ?? 'pendiente';
+        estadoSeleccionado = estadoActual;
+        editando = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reporte actualizado correctamente'),
+          backgroundColor: verde,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => editando = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo actualizar la vista: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> confirmarEliminacion() async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+        title: const Text(
+          '¿Eliminar reporte?',
+          style: TextStyle(
+            color: bosque,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: const Text(
+          'Esta acción eliminará tu reporte y su fotografía. '
+          'No podrás recuperarlo después.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: Colors.blueGrey),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Sí, eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true && mounted) {
+      await eliminarReporte();
+    }
+  }
+
+  Future<void> eliminarReporte() async {
+    if (!puedeEliminar || eliminando) return;
+
+    setState(() => eliminando = true);
+
+    try {
+      final id = reporteActual['id'].toString();
+      final fotoUrl = reporteActual['foto_url']?.toString() ?? '';
+
+      await supabase
+          .from('reportes')
+          .delete()
+          .eq('id', id);
+
+      if (fotoUrl.isNotEmpty) {
+        try {
+          final uri = Uri.parse(fotoUrl);
+          final segmentos = uri.pathSegments;
+
+          final indice = segmentos.indexOf('reportes-fotos');
+
+          if (indice != -1 && indice + 1 < segmentos.length) {
+            final rutaFoto = segmentos.skip(indice + 1).join('/');
+
+            await supabase.storage
+                .from('reportes-fotos')
+                .remove([Uri.decodeComponent(rutaFoto)]);
+          }
+        } catch (error) {
+          debugPrint('No se pudo eliminar la fotografía: $error');
+        }
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Reporte eliminado correctamente'),
+          backgroundColor: verde,
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => eliminando = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo eliminar el reporte: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final categoria = widget.reporte['categoria']?.toString() ?? 'Otro';
-    final fotoUrl = widget.reporte['foto_url']?.toString() ?? '';
+    final categoria =
+        reporteActual['categoria']?.toString() ?? 'Otro';
+    final fotoUrl =
+        reporteActual['foto_url']?.toString() ?? '';
 
-    final fecha = widget.reporte['created_at'] != null
-        ? DateTime.parse(widget.reporte['created_at']).toLocal()
+    final fecha = reporteActual['created_at'] != null
+        ? DateTime.parse(reporteActual['created_at']).toLocal()
         : null;
 
     return Scaffold(
@@ -142,7 +332,7 @@ class _DetailScreenState extends State<DetailScreen> {
             const SizedBox(height: 15),
 
             Text(
-              widget.reporte['titulo']?.toString() ?? 'Sin título',
+              reporteActual['titulo']?.toString() ?? 'Sin título',
               style: const TextStyle(
                 color: bosque,
                 fontSize: 25,
@@ -164,7 +354,7 @@ class _DetailScreenState extends State<DetailScreen> {
             const SizedBox(height: 7),
 
             Text(
-              widget.reporte['descripcion']?.toString() ?? '',
+              reporteActual['descripcion']?.toString() ?? '',
               style: const TextStyle(
                 color: Colors.blueGrey,
                 fontSize: 15,
@@ -179,6 +369,52 @@ class _DetailScreenState extends State<DetailScreen> {
               'Estado del reporte',
               _nombreEstado(estadoActual),
             ),
+
+            if (puedeEditar) ...[
+              const SizedBox(height: 18),
+
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: editando || guardando || eliminando
+                      ? null
+                      : editarReporte,
+                  icon: editando
+                      ? const SizedBox(
+                          width: 19,
+                          height: 19,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: verde,
+                          ),
+                        )
+                      : const Icon(Icons.edit_outlined),
+                  label: Text(
+                    editando ? 'Actualizando...' : 'Editar mi reporte',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: bosque,
+                    side: const BorderSide(color: verde),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              const Center(
+                child: Text(
+                  'Puedes editar tu reporte mientras esté pendiente.',
+                  style: TextStyle(
+                    color: Colors.blueGrey,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
 
             if (esAdmin) ...[
               const SizedBox(height: 18),
@@ -196,8 +432,7 @@ class _DetailScreenState extends State<DetailScreen> {
                   children: [
                     const Row(
                       children: [
-                        Icon(Icons.admin_panel_settings,
-                            color: verde),
+                        Icon(Icons.admin_panel_settings, color: verde),
                         SizedBox(width: 9),
                         Text(
                           'Administración del reporte',
@@ -234,7 +469,7 @@ class _DetailScreenState extends State<DetailScreen> {
                           child: Text('Atendido'),
                         ),
                       ],
-                      onChanged: guardando
+                      onChanged: guardando || eliminando
                           ? null
                           : (valor) {
                               if (valor != null) {
@@ -251,6 +486,7 @@ class _DetailScreenState extends State<DetailScreen> {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: guardando ||
+                                eliminando ||
                                 estadoSeleccionado == estadoActual
                             ? null
                             : actualizarEstado,
@@ -282,12 +518,58 @@ class _DetailScreenState extends State<DetailScreen> {
               ),
             ],
 
+            if (puedeEliminar) ...[
+              const SizedBox(height: 20),
+
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: eliminando || guardando || editando
+                      ? null
+                      : confirmarEliminacion,
+                  icon: eliminando
+                      ? const SizedBox(
+                          width: 19,
+                          height: 19,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.red,
+                          ),
+                        )
+                      : const Icon(Icons.delete_outline_rounded),
+                  label: Text(
+                    eliminando ? 'Eliminando...' : 'Eliminar mi reporte',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(color: Colors.red.shade300),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              const Center(
+                child: Text(
+                  'Solo puedes eliminar reportes pendientes.',
+                  style: TextStyle(
+                    color: Colors.blueGrey,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+
             const SizedBox(height: 15),
 
             _dato(
               Icons.location_on_outlined,
               'Ubicación GPS',
-              '${widget.reporte['latitud']}, ${widget.reporte['longitud']}',
+              '${reporteActual['latitud']}, ${reporteActual['longitud']}',
             ),
 
             const SizedBox(height: 15),

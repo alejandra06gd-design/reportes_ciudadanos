@@ -1,6 +1,9 @@
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'register_screen.dart';
+import 'home_screen.dart';
+import 'dart:async';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,11 +15,132 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool ocultarPassword = true;
 
+  StreamSubscription<AuthState>? authSubscription;
+  
+  final correoController = TextEditingController();
+  final passwordController = TextEditingController();
+  bool cargando = false;
+  bool cargandoGoogle = false;
+
   static const bosque = Color(0xFF183D2C);
   static const verde = Color(0xFF416B4C);
   static const salvia = Color(0xFFDCE8D5);
   static const cafe = Color(0xFF987451);
   static const fondo = Color(0xFFF7F8F4);
+
+  Future<void> _iniciarSesion() async {
+  final correo = correoController.text.trim();
+  final password = passwordController.text;
+
+  if (correo.isEmpty || password.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Completa tu correo y contraseña.'),
+      ),
+    );
+    return;
+  }
+
+  setState(() {
+    cargando = true;
+  });
+
+  try {
+    await Supabase.instance.client.auth.signInWithPassword(
+      email: correo,
+      password: password,
+    );
+
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const HomeScreen(),
+      ),
+    );
+  } on AuthException catch (error) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error.message),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
+  } catch (error) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No se pudo iniciar sesión. Intenta nuevamente.'),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
+  } finally {
+    if (mounted) {
+      setState(() {
+        cargando = false;
+      });
+    }
+  }
+}
+
+Future<void> _iniciarSesionGoogle() async {
+  setState(() {
+    cargandoGoogle = true;
+  });
+
+  try {
+    await Supabase.instance.client.auth.signInWithOAuth(
+      OAuthProvider.google,
+      redirectTo: 'civicapp://login-callback',
+      authScreenLaunchMode: LaunchMode.externalApplication,
+    );
+  } on AuthException catch (error) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error.message),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
+  } catch (error) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No se pudo iniciar sesión con Google.'),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
+  } finally {
+    if (mounted) {
+      setState(() {
+        cargandoGoogle = false;
+      });
+    }
+  }
+}
+
+@override
+void initState() {
+  super.initState();
+
+  authSubscription =
+      Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    if (data.event == AuthChangeEvent.signedIn && mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  });
+}
+
+@override
+void dispose() {
+  authSubscription?.cancel();
+  super.dispose();
+}
 
   @override
   Widget build(BuildContext context) {
@@ -154,6 +278,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 9),
                     TextField(
+                      controller: correoController,
                       keyboardType: TextInputType.emailAddress,
                       decoration: _decoracion(
                         'nombre@correo.com',
@@ -173,6 +298,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 9),
                     TextField(
+                      controller: passwordController,
                       obscureText: ocultarPassword,
                       decoration: _decoracion(
                         'Ingresa tu contraseña',
@@ -218,7 +344,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       height: 55,
                       child: ElevatedButton(
-                        onPressed: () {},
+                        onPressed: cargando ? null : _iniciarSesion,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: bosque,
                           foregroundColor: Colors.white,
@@ -227,14 +353,19 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(15),
                           ),
                         ),
-                        child: const Text(
-                          'Ingresar a mi cuenta',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ),
+                        child: cargando
+                            ? const CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2.5,
+                              )
+                            : const Text(
+                                'Ingresar a mi cuenta',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
+                                              ),
                     ),
 
                     const SizedBox(height: 23),
@@ -262,15 +393,17 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       height: 52,
                       child: OutlinedButton.icon(
-                        onPressed: () {},
+                        onPressed: cargandoGoogle ? null : _iniciarSesionGoogle,
                         icon: const Icon(
                           Icons.g_mobiledata_rounded,
                           size: 30,
                           color: bosque,
                         ),
-                        label: const Text(
-                          'Continuar con Google',
-                          style: TextStyle(
+                        label: Text(
+                          cargandoGoogle
+                              ? 'Conectando con Google...'
+                              : 'Continuar con Google',
+                          style: const TextStyle(
                             color: bosque,
                             fontWeight: FontWeight.w600,
                           ),
