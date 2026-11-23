@@ -212,13 +212,12 @@ class HomeScreen extends StatelessWidget {
 
               Row(
                 children: [
-                  _categoria(Icons.construction_rounded, 'Baches', cafe),
-                  _categoria(Icons.delete_outline_rounded, 'Basura', verde),
-                  _categoria(Icons.lightbulb_outline_rounded, 'Alumbrado', cafe),
-                  _categoria(Icons.more_horiz_rounded, 'Otros', verde),
+                  _categoria(context, Icons.construction_rounded, 'Baches', cafe, 'Bache'),
+                  _categoria(context, Icons.delete_outline_rounded, 'Basura', verde, 'Basura'),
+                  _categoria(context, Icons.lightbulb_outline_rounded, 'Alumbrado', cafe, 'Alumbrado público'),
+                  _categoria(context, Icons.more_horiz_rounded, 'Otros', verde, 'Otro'),
                 ],
               ),
-
               const SizedBox(height: 30),
 
               // REPORTES RECIENTES
@@ -422,8 +421,26 @@ class HomeScreen extends StatelessWidget {
   }
 
 
-  Widget _categoria(IconData icono, String nombre, Color color) {
-    return Expanded(
+Widget _categoria(
+  BuildContext context,
+  IconData icono,
+  String nombre,
+  Color color,
+  String categoriaValor,
+) {
+  return Expanded(
+    child: InkWell(
+      borderRadius: BorderRadius.circular(17),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CreateReportScreen(
+              categoriaInicial: categoriaValor,
+            ),
+          ),
+        );
+      },
       child: Column(
         children: [
           Container(
@@ -446,8 +463,9 @@ class HomeScreen extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _reporte(
     IconData icono,

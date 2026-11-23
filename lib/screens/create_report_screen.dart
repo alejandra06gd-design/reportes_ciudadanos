@@ -4,9 +4,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CreateReportScreen extends StatefulWidget {
-  const CreateReportScreen({super.key});
+  final String? categoriaInicial;
+
+  const CreateReportScreen({
+    super.key,
+    this.categoriaInicial,
+  });
 
   @override
   State<CreateReportScreen> createState() => _CreateReportScreenState();
@@ -28,6 +34,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
   Position? ubicacionActual;
   bool obteniendoUbicacion = false;
+  bool guardandoReporte = false;
 
   final categorias = [
     'Bache',
@@ -35,6 +42,15 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     'Alumbrado público',
     'Otro',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (categorias.contains(widget.categoriaInicial)) {
+      categoria = widget.categoriaInicial;
+    }
+  }
 
   @override
   void dispose() {
@@ -131,6 +147,139 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       if (mounted) {
         setState(() {
           obteniendoUbicacion = false;
+        });
+      }
+    }
+  }
+
+  // Guardar fotografía y reporte en Supabase.
+  Future<void> guardarReporte() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (imagenSeleccionada == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debes agregar una fotografía del problema.'),
+        ),
+      );
+      return;
+    }
+
+    if (ubicacionActual == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Primero debes obtener la ubicación GPS.'),
+        ),
+      );
+      return;
+    }
+
+    final supabase = Supabase.instance.client;
+    final usuario = supabase.auth.currentUser;
+
+    if (usuario == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tu sesión ha terminado. Inicia sesión nuevamente.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      guardandoReporte = true;
+    });
+
+    try {
+      // Preparar la fotografía.
+      final archivo = File(imagenSeleccionada!.path);
+      final extension = imagenSeleccionada!.path
+          .split('.')
+          .last
+          .toLowerCase();
+
+      final contentType = extension == 'png'
+          ? 'image/png'
+          : 'image/jpeg';
+
+      final nombreArchivo =
+          '${DateTime.now().millisecondsSinceEpoch}.$extension';
+
+      final rutaArchivo = '${usuario.id}/$nombreArchivo';
+
+      // Subir fotografía al bucket.
+      await supabase.storage
+          .from('reportes-fotos')
+          .upload(
+            rutaArchivo,
+            archivo,
+            fileOptions: FileOptions(
+              contentType: contentType,
+            ),
+          );
+
+      // Obtener URL pública de la fotografía.
+      final fotoUrl = supabase.storage
+          .from('reportes-fotos')
+          .getPublicUrl(rutaArchivo);
+
+      // Guardar información del reporte en la tabla.
+      await supabase.from('reportes').insert({
+        'user_id': usuario.id,
+        'titulo': tituloController.text.trim(),
+        'descripcion': descripcionController.text.trim(),
+        'categoria': categoria,
+        'foto_url': fotoUrl,
+        'latitud': ubicacionActual!.latitude,
+        'longitud': ubicacionActual!.longitude,
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('¡Reporte enviado correctamente!'),
+          backgroundColor: verde,
+        ),
+      );
+
+      Navigator.pop(context);
+    } on StorageException catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al subir la fotografía: ${error.message}'),
+        ),
+      );
+    } on PostgrestException catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al guardar el reporte: ${error.message}'),
+        ),
+      );
+    } on AuthException catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error de autenticación: ${error.message}'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo enviar el reporte: $error'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          guardandoReporte = false;
         });
       }
     }
@@ -268,7 +417,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                // Fotografía del reporte.
                 Column(
                   children: [
                     if (imagenSeleccionada != null)
@@ -284,9 +432,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     else
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 27,
-                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 27),
                         decoration: BoxDecoration(
                           color: salvia.withValues(alpha: 0.55),
                           borderRadius: BorderRadius.circular(17),
@@ -339,9 +485,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                           child: OutlinedButton.icon(
                             onPressed: () =>
                                 seleccionarImagen(ImageSource.gallery),
-                            icon: const Icon(
-                              Icons.photo_library_outlined,
-                            ),
+                            icon: const Icon(Icons.photo_library_outlined),
                             label: const Text('Galería'),
                           ),
                         ),
@@ -366,7 +510,6 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
                 const SizedBox(height: 28),
 
-                // Ubicación GPS.
                 const Text(
                   'Ubicación del problema',
                   style: TextStyle(
@@ -460,9 +603,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Icon(
-                                  Icons.my_location,
-                                ),
+                              : const Icon(Icons.my_location),
                           label: Text(
                             obteniendoUbicacion
                                 ? 'Obteniendo ubicación...'
@@ -492,21 +633,23 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   width: double.infinity,
                   height: 54,
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Formulario validado. Próximo paso: guardar el reporte.',
+                    onPressed:
+                        guardandoReporte ? null : guardarReporte,
+                    icon: guardandoReporte
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
                             ),
-                          ),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.send_rounded),
-                    label: const Text(
-                      'Continuar con el reporte',
-                      style: TextStyle(
+                          )
+                        : const Icon(Icons.send_rounded),
+                    label: Text(
+                      guardandoReporte
+                          ? 'Enviando reporte...'
+                          : 'Continuar con el reporte',
+                      style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),
