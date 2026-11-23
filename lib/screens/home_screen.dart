@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'create_report_screen.dart';
+import 'detail_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -242,22 +243,80 @@ class HomeScreen extends StatelessWidget {
 
               const SizedBox(height: 5),
 
-              _reporte(
-                Icons.construction_rounded,
-                cafe,
-                'Bache en la vía',
-                'Problema en una calle del barrio',
-                'Pendiente',
-              ),
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: Supabase.instance.client
+                    .from('reportes')
+                    .select(
+                      'id, titulo, descripcion, categoria, estado, created_at, foto_url, latitud, longitud',
+                    )
+                    .order('created_at', ascending: false)
+                    .limit(3)
+                    .then(
+                      (datos) => List<Map<String, dynamic>>.from(datos),
+                    ),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(color: verde),
+                      ),
+                    );
+                  }
 
-              const SizedBox(height: 12),
+                  if (snapshot.hasError) {
+                    return const Text(
+                      'No se pudieron cargar los reportes.',
+                      style: TextStyle(color: Colors.redAccent),
+                    );
+                  }
 
-              _reporte(
-                Icons.lightbulb_outline_rounded,
-                verde,
-                'Alumbrado público',
-                'Luminaria fuera de funcionamiento',
-                'En revisión',
+                  final reportes = snapshot.data ?? [];
+
+                  if (reportes.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Center(
+                        child: Text(
+                          'Todavía no hay reportes registrados.',
+                          style: TextStyle(color: Colors.blueGrey),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: reportes.map((reporte) {
+                      final categoria =
+                          reporte['categoria']?.toString() ?? 'Otro';
+
+                      final estado =
+                          reporte['estado']?.toString() ?? 'pendiente';
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(17),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => DetailScreen(reporte: reporte),
+                              ),
+                            );
+                          },
+                          child: _reporte(
+                            _iconoCategoria(categoria),
+                            _colorCategoria(categoria),
+                            reporte['titulo']?.toString() ?? 'Sin título',
+                            reporte['descripcion']?.toString() ?? '',
+                            _nombreEstado(estado),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
               ),
 
               const SizedBox(height: 20),
@@ -302,6 +361,47 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
+
+
+  IconData _iconoCategoria(String categoria) {
+    switch (categoria) {
+      case 'Bache':
+        return Icons.construction_rounded;
+      case 'Basura':
+        return Icons.delete_outline_rounded;
+      case 'Alumbrado público':
+        return Icons.lightbulb_outline_rounded;
+      default:
+        return Icons.more_horiz_rounded;
+    }
+  }
+
+  Color _colorCategoria(String categoria) {
+    switch (categoria) {
+      case 'Bache':
+        return cafe;
+      case 'Basura':
+        return verde;
+      case 'Alumbrado público':
+        return cafe;
+      default:
+        return verde;
+    }
+  }
+
+  String _nombreEstado(String estado) {
+    switch (estado) {
+      case 'pendiente':
+        return 'Pendiente';
+      case 'en revisión':
+        return 'En revisión';
+      case 'atendido':
+        return 'Atendido';
+      default:
+        return estado;
+    }
+  }
+
 
   Widget _categoria(IconData icono, String nombre, Color color) {
     return Expanded(
