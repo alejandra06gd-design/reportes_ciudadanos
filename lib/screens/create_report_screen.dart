@@ -1,5 +1,9 @@
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
 
 class CreateReportScreen extends StatefulWidget {
   const CreateReportScreen({super.key});
@@ -19,6 +23,12 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
 
   String? categoria;
 
+  final ImagePicker picker = ImagePicker();
+  XFile? imagenSeleccionada;
+
+  Position? ubicacionActual;
+  bool obteniendoUbicacion = false;
+
   final categorias = [
     'Bache',
     'Basura',
@@ -31,6 +41,99 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     tituloController.dispose();
     descripcionController.dispose();
     super.dispose();
+  }
+
+  // Seleccionar o tomar fotografía.
+  Future<void> seleccionarImagen(ImageSource origen) async {
+    try {
+      final XFile? imagen = await picker.pickImage(
+        source: origen,
+        imageQuality: 80,
+      );
+
+      if (imagen != null && mounted) {
+        setState(() {
+          imagenSeleccionada = imagen;
+        });
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo seleccionar la fotografía.'),
+        ),
+      );
+    }
+  }
+
+  // Obtener ubicación GPS.
+  Future<void> obtenerUbicacion() async {
+    setState(() {
+      obteniendoUbicacion = true;
+    });
+
+    try {
+      bool servicioActivo =
+          await Geolocator.isLocationServiceEnabled();
+
+      if (!servicioActivo) {
+        throw Exception('Activa el GPS de tu teléfono.');
+      }
+
+      LocationPermission permiso =
+          await Geolocator.checkPermission();
+
+      if (permiso == LocationPermission.denied) {
+        permiso = await Geolocator.requestPermission();
+      }
+
+      if (permiso == LocationPermission.denied) {
+        throw Exception(
+          'Necesitamos permiso para acceder a tu ubicación.',
+        );
+      }
+
+      if (permiso == LocationPermission.deniedForever) {
+        throw Exception(
+          'El permiso está bloqueado. Actívalo desde los ajustes.',
+        );
+      }
+
+      Position posicion = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        ubicacionActual = posicion;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('¡Ubicación obtenida correctamente!'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          obteniendoUbicacion = false;
+        });
+      }
+    }
   }
 
   @override
@@ -164,65 +267,218 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 27),
-                  decoration: BoxDecoration(
-                    color: salvia.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(17),
-                    border: Border.all(color: verde.withValues(alpha: 0.3)),
-                  ),
-                  child: const Column(
-                    children: [
-                      Icon(
-                        Icons.add_a_photo_outlined,
-                        color: verde,
-                        size: 35,
-                      ),
-                      SizedBox(height: 9),
-                      Text(
-                        'Agregar fotografía',
-                        style: TextStyle(
-                          color: bosque,
-                          fontWeight: FontWeight.bold,
+
+                // Fotografía del reporte.
+                Column(
+                  children: [
+                    if (imagenSeleccionada != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(17),
+                        child: Image.file(
+                          File(imagenSeleccionada!.path),
+                          width: double.infinity,
+                          height: 190,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    else
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 27,
+                        ),
+                        decoration: BoxDecoration(
+                          color: salvia.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(17),
+                          border: Border.all(
+                            color: verde.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(
+                              Icons.add_a_photo_outlined,
+                              color: verde,
+                              size: 35,
+                            ),
+                            SizedBox(height: 9),
+                            Text(
+                              'Agregar fotografía',
+                              style: TextStyle(
+                                color: bosque,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Toma una foto o selecciónala de tu galería',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.blueGrey,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Próximamente podrás tomar o seleccionar una foto',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.blueGrey,
-                          fontSize: 11,
+
+                    const SizedBox(height: 12),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                seleccionarImagen(ImageSource.camera),
+                            icon: const Icon(Icons.camera_alt_outlined),
+                            label: const Text('Cámara'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                seleccionarImagen(ImageSource.gallery),
+                            icon: const Icon(
+                              Icons.photo_library_outlined,
+                            ),
+                            label: const Text('Galería'),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    if (imagenSeleccionada != null)
+                      TextButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            imagenSeleccionada = null;
+                          });
+                        },
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Eliminar fotografía'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
                         ),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
 
-                const SizedBox(height: 18),
+                const SizedBox(height: 28),
+
+                // Ubicación GPS.
+                const Text(
+                  'Ubicación del problema',
+                  style: TextStyle(
+                    color: bosque,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 10),
 
                 Container(
-                  padding: const EdgeInsets.all(15),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(17),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(15),
+                    color: salvia.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(17),
+                    border: Border.all(
+                      color: verde.withValues(alpha: 0.3),
+                    ),
                   ),
-                  child: const Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.location_on_outlined,
-                        color: verde,
-                        size: 27,
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            color: verde,
+                            size: 28,
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Text(
+                              ubicacionActual != null
+                                  ? 'Ubicación obtenida'
+                                  : 'Ubicación pendiente',
+                              style: const TextStyle(
+                                color: bosque,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          if (ubicacionActual != null)
+                            const Icon(
+                              Icons.check_circle,
+                              color: verde,
+                            ),
+                        ],
                       ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Ubicación GPS\nSe obtendrá al enviar el reporte',
-                          style: TextStyle(
+
+                      const SizedBox(height: 10),
+
+                      if (ubicacionActual != null) ...[
+                        Text(
+                          'Latitud: ${ubicacionActual!.latitude}',
+                          style: const TextStyle(
                             color: bosque,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          'Longitud: ${ubicacionActual!.longitude}',
+                          style: const TextStyle(
+                            color: bosque,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ] else
+                        const Text(
+                          'Obtén las coordenadas GPS del lugar donde ocurre el problema.',
+                          style: TextStyle(
+                            color: Colors.blueGrey,
                             fontSize: 12,
-                            height: 1.5,
+                          ),
+                        ),
+
+                      const SizedBox(height: 14),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: obteniendoUbicacion
+                              ? null
+                              : obtenerUbicacion,
+                          icon: obteniendoUbicacion
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.my_location,
+                                ),
+                          label: Text(
+                            obteniendoUbicacion
+                                ? 'Obteniendo ubicación...'
+                                : ubicacionActual != null
+                                    ? 'Actualizar ubicación'
+                                    : 'Obtener mi ubicación',
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: bosque,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 13,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -285,11 +541,16 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(color: Color(0xFFE8EDE5)),
+        borderSide: const BorderSide(
+          color: Color(0xFFE8EDE5),
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
-        borderSide: const BorderSide(color: verde, width: 1.5),
+        borderSide: const BorderSide(
+          color: verde,
+          width: 1.5,
+        ),
       ),
     );
   }
