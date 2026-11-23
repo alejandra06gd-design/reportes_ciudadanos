@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'create_report_screen.dart';
 import 'detail_screen.dart';
+import 'my_reports_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -336,6 +337,16 @@ class HomeScreen extends StatelessWidget {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: 0,
+        onTap: (index) {
+          if (index == 1) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const MyReportsScreen(),
+              ),
+            );
+          }
+        },
         selectedItemColor: bosque,
         unselectedItemColor: Colors.grey,
         backgroundColor: Colors.white,
