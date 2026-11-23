@@ -1,8 +1,20 @@
 
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
+import 'screens/home_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: const String.fromEnvironment('SUPABASE_URL'),
+    publishableKey: const String.fromEnvironment(
+      'SUPABASE_PUBLISHABLE_KEY',
+    ),
+  );
+
   runApp(const CivicApp());
 }
 
@@ -22,11 +34,54 @@ class CivicApp extends StatelessWidget {
         ),
         fontFamily: 'Roboto',
       ),
-      home: const WelcomeScreen(),
+      home: const AuthGate(),
     );
   }
 }
 
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  late bool tieneSesion;
+  StreamSubscription<AuthState>? suscripcion;
+
+  @override
+  void initState() {
+    super.initState();
+
+    tieneSesion =
+        Supabase.instance.client.auth.currentSession != null;
+
+    suscripcion =
+        Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+
+      setState(() {
+        tieneSesion = data.session != null;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    suscripcion?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (tieneSesion) {
+      return const HomeScreen();
+    }
+
+    return const WelcomeScreen();
+  }
+}
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -34,7 +89,7 @@ class WelcomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const bosque = Color(0xFF183D2C);
-    const verde = Color(0xFF416B4C);
+    
     const salvia = Color(0xFFDCE8D5);
     const cafe = Color(0xFF987451);
 
