@@ -1,8 +1,8 @@
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-
-class DetailScreen extends StatelessWidget {
+class DetailScreen extends StatefulWidget {
   final Map<String, dynamic> reporte;
 
   const DetailScreen({
@@ -10,18 +10,83 @@ class DetailScreen extends StatelessWidget {
     required this.reporte,
   });
 
+  @override
+  State<DetailScreen> createState() => _DetailScreenState();
+}
+
+class _DetailScreenState extends State<DetailScreen> {
   static const bosque = Color(0xFF183D2C);
   static const verde = Color(0xFF416B4C);
   static const salvia = Color(0xFFDCE8D5);
   static const cafe = Color(0xFF987451);
 
+  static const correoAdmin = 'alejandra.06.gd@gmail.com';
+
+  late String estadoActual;
+  late String estadoSeleccionado;
+
+  bool esAdmin = false;
+  bool guardando = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    estadoActual = widget.reporte['estado']?.toString() ?? 'pendiente';
+    estadoSeleccionado = estadoActual;
+
+    final usuario = Supabase.instance.client.auth.currentUser;
+
+    esAdmin = usuario?.email?.toLowerCase() ==
+        correoAdmin.toLowerCase();
+  }
+
+  Future<void> actualizarEstado() async {
+    if (estadoSeleccionado == estadoActual) return;
+
+    setState(() => guardando = true);
+
+    try {
+      await Supabase.instance.client
+          .from('reportes')
+          .update({'estado': estadoSeleccionado})
+          .eq('id', widget.reporte['id']);
+
+      if (!mounted) return;
+
+      setState(() {
+        estadoActual = estadoSeleccionado;
+        widget.reporte['estado'] = estadoSeleccionado;
+        guardando = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Estado actualizado correctamente'),
+          backgroundColor: verde,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => guardando = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo actualizar el estado: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final categoria = reporte['categoria']?.toString() ?? 'Otro';
-    final estado = reporte['estado']?.toString() ?? 'pendiente';
-    final fotoUrl = reporte['foto_url']?.toString() ?? '';
-    final fecha = reporte['created_at'] != null
-        ? DateTime.parse(reporte['created_at']).toLocal()
+    final categoria = widget.reporte['categoria']?.toString() ?? 'Otro';
+    final fotoUrl = widget.reporte['foto_url']?.toString() ?? '';
+
+    final fecha = widget.reporte['created_at'] != null
+        ? DateTime.parse(widget.reporte['created_at']).toLocal()
         : null;
 
     return Scaffold(
@@ -77,7 +142,7 @@ class DetailScreen extends StatelessWidget {
             const SizedBox(height: 15),
 
             Text(
-              reporte['titulo']?.toString() ?? 'Sin título',
+              widget.reporte['titulo']?.toString() ?? 'Sin título',
               style: const TextStyle(
                 color: bosque,
                 fontSize: 25,
@@ -99,7 +164,7 @@ class DetailScreen extends StatelessWidget {
             const SizedBox(height: 7),
 
             Text(
-              reporte['descripcion']?.toString() ?? '',
+              widget.reporte['descripcion']?.toString() ?? '',
               style: const TextStyle(
                 color: Colors.blueGrey,
                 fontSize: 15,
@@ -112,15 +177,117 @@ class DetailScreen extends StatelessWidget {
             _dato(
               Icons.flag_outlined,
               'Estado del reporte',
-              _nombreEstado(estado),
+              _nombreEstado(estadoActual),
             ),
+
+            if (esAdmin) ...[
+              const SizedBox(height: 18),
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(17),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: salvia),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.admin_panel_settings,
+                            color: verde),
+                        SizedBox(width: 9),
+                        Text(
+                          'Administración del reporte',
+                          style: TextStyle(
+                            color: bosque,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    DropdownButtonFormField<String>(
+                      initialValue: estadoSeleccionado,
+                      decoration: InputDecoration(
+                        labelText: 'Cambiar estado',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'pendiente',
+                          child: Text('Pendiente'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'en revisión',
+                          child: Text('En revisión'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'atendido',
+                          child: Text('Atendido'),
+                        ),
+                      ],
+                      onChanged: guardando
+                          ? null
+                          : (valor) {
+                              if (valor != null) {
+                                setState(() {
+                                  estadoSeleccionado = valor;
+                                });
+                              }
+                            },
+                    ),
+
+                    const SizedBox(height: 15),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: guardando ||
+                                estadoSeleccionado == estadoActual
+                            ? null
+                            : actualizarEstado,
+                        icon: guardando
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.save_outlined),
+                        label: Text(
+                          guardando ? 'Guardando...' : 'Guardar cambios',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: bosque,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             const SizedBox(height: 15),
 
             _dato(
               Icons.location_on_outlined,
               'Ubicación GPS',
-              '${reporte['latitud']}, ${reporte['longitud']}',
+              '${widget.reporte['latitud']}, ${widget.reporte['longitud']}',
             ),
 
             const SizedBox(height: 15),
