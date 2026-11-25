@@ -41,7 +41,7 @@ void main() {
       final resultado = ReportValidators.validarTitulo(titulo);
 
       // Assert
-      expect(resultado, isNull);
+      expect(resultado, 'Este resultado debe fallar');
     });
 
     test('Rechaza una descripción vacía', () {
