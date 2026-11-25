@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'create_report_screen.dart';
@@ -22,10 +23,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late Future<List<Map<String, dynamic>>> futuroReportes;
 
+  int notificacionesNoLeidas = 0;
+
   @override
   void initState() {
     super.initState();
     futuroReportes = _cargarReportes();
+    _cargarContadorNotificaciones();
   }
 
   Future<List<Map<String, dynamic>>> _cargarReportes() async {
@@ -40,15 +44,52 @@ class _HomeScreenState extends State<HomeScreen> {
     return List<Map<String, dynamic>>.from(datos);
   }
 
+  Future<void> _cargarContadorNotificaciones() async {
+    try {
+      final usuario = Supabase.instance.client.auth.currentUser;
+
+      if (usuario == null) return;
+
+      final respuesta = await Supabase.instance.client
+          .from('notificaciones')
+          .select('id')
+          .eq('user_id', usuario.id)
+          .eq('leida', false);
+
+      if (!mounted) return;
+
+      setState(() {
+        notificacionesNoLeidas = respuesta.length;
+      });
+    } catch (e) {
+      // Si ocurre un error, conservamos el contador actual.
+    }
+  }
+
   Future<void> _actualizarReportes() async {
     setState(() {
       futuroReportes = _cargarReportes();
     });
 
+    await _cargarContadorNotificaciones();
+
     try {
       await futuroReportes;
     } catch (_) {
       // FutureBuilder mostrará el mensaje de error.
+    }
+  }
+
+  Future<void> _abrirNotificaciones() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const NotificationsScreen(),
+      ),
+    );
+
+    if (mounted) {
+      _cargarContadorNotificaciones();
     }
   }
 
@@ -106,21 +147,53 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     const Spacer(),
-                    IconButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const NotificationsScreen(),
+
+                    // CAMPANITA CON CONTADOR
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        IconButton(
+                          onPressed: _abrirNotificaciones,
+                          icon: const Icon(
+                            Icons.notifications_none_rounded,
+                            color: bosque,
+                            size: 27,
                           ),
-                        );
-                      },
-                      icon: const Icon(
-                        Icons.notifications_none_rounded,
-                        color: bosque,
-                        size: 27,
-                      ),
+                        ),
+                        if (notificacionesNoLeidas > 0)
+                          Positioned(
+                            top: 3,
+                            right: 3,
+                            child: Container(
+                              constraints: const BoxConstraints(
+                                minWidth: 18,
+                                minHeight: 18,
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  notificacionesNoLeidas > 9
+                                      ? '9+'
+                                      : '$notificacionesNoLeidas',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
+
                     PopupMenuButton<String>(
                       tooltip: 'Opciones de cuenta',
                       onSelected: (valor) async {

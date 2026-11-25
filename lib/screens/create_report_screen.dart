@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../utils/report_validators.dart';
 
 class CreateReportScreen extends StatefulWidget {
   final String? categoriaInicial;
@@ -462,12 +463,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     'Ej. Bache en la calle principal',
                     Icons.edit_outlined,
                   ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Ingresa el título del reporte.';
-                    }
-                    return null;
-                  },
+                  validator: ReportValidators.validarTitulo,
                 ),
 
                 const SizedBox(height: 22),
@@ -495,12 +491,8 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   onChanged: (value) {
                     setState(() => categoria = value);
                   },
-                  validator: (value) {
-                    if (value == null) {
-                      return 'Selecciona una categoría.';
-                    }
-                    return null;
-                  },
+                  validator: (value) =>
+                    ReportValidators.validarCategoria(value, categorias),
                 ),
 
                 const SizedBox(height: 22),
@@ -520,12 +512,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     'Describe dónde ocurre y qué está pasando...',
                     Icons.description_outlined,
                   ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Describe el problema.';
-                    }
-                    return null;
-                  },
+                  validator: ReportValidators.validarDescripcion,
                 ),
 
                 const SizedBox(height: 24),
