@@ -1,6 +1,6 @@
 # \# CIVIC APP – Reportes Ciudadanos
 
-# 
+# ![CI - CIVIC APP](https://github.com/alejandra06gd-design/reportes_ciudadanos/actions/workflows/ci.yml/badge.svg) 
 
 # Aplicación móvil desarrollada con Flutter que permite a los ciudadanos registrar, consultar y realizar seguimiento de reportes sobre problemas o incidencias de su comunidad.
 
